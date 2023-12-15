@@ -68,8 +68,12 @@ impl Scanner {
     }
 
     // a b c d e
-    fn is_end(&self) -> bool {
+    fn is_last(&self) -> bool {
         self.offset >= self.chars.len() - 1
+    }
+
+    fn is_end(&self) -> bool {
+        self.offset > self.chars.len() - 1
     }
 
     fn consume_literal(&mut self) {
