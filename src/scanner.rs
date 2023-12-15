@@ -4,13 +4,23 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 lazy_static! {
-    static ref SPECIAL_CLOSER: HashMap<TokenType, String> = {
+    static ref SPECIAL_STRING_CLOSER: HashMap<TokenType, String> = {
         let mut hash_map = HashMap::new();
         hash_map.insert(TokenType::Header1, "\n".to_string());
         hash_map.insert(TokenType::Header2, "\n".to_string());
         hash_map.insert(TokenType::Header3, "\n".to_string());
         hash_map.insert(TokenType::Literal, "".to_string());
         hash_map.insert(TokenType::Null, "".to_string());
+        hash_map
+    };
+
+    static ref SPECIAL_CLOSER: HashMap<TokenType, TokenType> = {
+        let mut hash_map = HashMap::new();
+        hash_map.insert(TokenType::Header1, TokenType::Header1Close);
+        hash_map.insert(TokenType::Header2, TokenType::Header2Close);
+        hash_map.insert(TokenType::Header3, TokenType::Header3Close);
+        hash_map.insert(TokenType::Literal, TokenType::Null);
+        hash_map.insert(TokenType::Null, TokenType::Null);
         hash_map
     };
 }
@@ -57,14 +67,33 @@ impl Scanner {
         self.offset += 1;
     }
 
+    // a b c d e
     fn is_end(&self) -> bool {
         self.offset >= self.chars.len() - 1
     }
 
     fn consume_literal(&mut self) {
         let mut literal_string = "".to_string();
-        let previous_token = self.tokens.last().unwrap();
-        let closing_token_string = *SPECIAL_CLOSER.get(&previous_token.token_type).unwrap().clone();
+        let previous_token = self.tokens.last().unwrap().clone();
+        let closing_token_string = SPECIAL_STRING_CLOSER.get(&previous_token.token_type).unwrap().clone();
+
+        loop {
+            if let Some(current) = self.consume().clone() {
+                literal_string.push(current);
+                if literal_string.contains(&closing_token_string) {
+                    literal_string = literal_string.replace(&closing_token_string, "");
+                    break;
+                }
+            } else { // If there are no more characters left
+
+                break;
+            }
+        }
+        
+        let literal_token = Token::new(TokenType::Literal, literal_string);
+        let expected_closing_token = SPECIAL_CLOSER.get(&previous_token.token_type).unwrap().clone();
+        self.tokens.push(literal_token);
+        self.tokens.push(Token::new(expected_closing_token, closing_token_string));
     }
 
     // # hello <- valid
@@ -82,7 +111,12 @@ impl Scanner {
             token_string.push(self.consume().unwrap());
         }
         
-        self.tokens.push(Token::from(token_string));
+        self.tokens.push(match token_string.as_str() {
+                "# " => Token { token_type: TokenType::Header1, chars: token_string.chars().collect() },
+                "## " => Token { token_type: TokenType::Header2, chars: token_string.chars().collect() },
+                "###" => Token { token_type: TokenType::Header3, chars: token_string.chars().collect() },
+                _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
+            });
     }
 }
 
@@ -96,10 +130,12 @@ pub fn parse(input: String) -> Scanner {
             Some(c) => c,
             None => break,
         };
+
+        println!("emoji: {current_char}");
         
         match current_char {
             '#' => scanner.consume_header(),
-            _ => todo!()
+            _ => scanner.consume_literal(),
         };
     }
     scanner //  not TO  REMOVE :3 uwu daddy drop database

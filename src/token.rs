@@ -7,8 +7,11 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Header1,
+    Header1Close,
     Header2,
+    Header2Close,
     Header3,
+    Header3Close,
     Literal,
     Null
 }
@@ -34,12 +37,8 @@ impl Token{
             _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
         }
     }
+
+    pub fn new(token_type: TokenType, value: String) -> Token {
+        Token { token_type, chars: value.chars().collect() }
+    }    
 }
-
-
-// # ciao
-// "juihuiu"
-
-// Hearder Literal(ciao)
-// OpenString Literal(jiuhuiu) CloseString
-
