@@ -2,7 +2,9 @@ mod scanner;
 mod token;
 
 fn main() {
-    let input = r#"# titolo"#;
+    let input = r#"# t"#.to_string();
 
-    println!("Hello, world!");
+    for t in scanner::parse(input).tokens {
+        println!("{:?}", t);
+    }
 }
