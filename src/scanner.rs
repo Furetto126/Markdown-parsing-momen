@@ -9,6 +9,9 @@ lazy_static! {
         hash_map.insert(TokenType::Header1, "\n".to_string());
         hash_map.insert(TokenType::Header2, "\n".to_string());
         hash_map.insert(TokenType::Header3, "\n".to_string());
+        hash_map.insert(TokenType::Italic, "*".to_string());
+        hash_map.insert(TokenType::Bold, "**".to_string());
+        hash_map.insert(TokenType::BoldItalic, "***".to_string());
         hash_map.insert(TokenType::Literal, "".to_string());
         hash_map.insert(TokenType::Null, "".to_string());
         hash_map
@@ -19,12 +22,16 @@ lazy_static! {
         hash_map.insert(TokenType::Header1, TokenType::Header1Close);
         hash_map.insert(TokenType::Header2, TokenType::Header2Close);
         hash_map.insert(TokenType::Header3, TokenType::Header3Close);
+        hash_map.insert(TokenType::Italic, TokenType::ItalicClose);
+        hash_map.insert(TokenType::Bold, TokenType::BoldClose);
+        hash_map.insert(TokenType::BoldItalic, TokenType::BoldItalicClose);
         hash_map.insert(TokenType::Literal, TokenType::Null);
         hash_map.insert(TokenType::Null, TokenType::Null);
         hash_map
     };
 }
 
+#[derive(Debug, Clone)]
 pub struct Scanner {
     chars: Vec<char>,
     offset: usize,
@@ -67,7 +74,6 @@ impl Scanner {
         self.offset += 1;
     }
 
-    // a b c d e
     fn is_last(&self) -> bool {
         self.offset >= self.chars.len() - 1
     }
@@ -78,26 +84,53 @@ impl Scanner {
 
     fn consume_literal(&mut self) {
         let mut literal_string = "".to_string();
-        let previous_token = self.tokens.last().unwrap().clone();
-        let closing_token_string = SPECIAL_STRING_CLOSER.get(&previous_token.token_type).unwrap().clone();
-
-        loop {
-            if let Some(current) = self.consume().clone() {
-                literal_string.push(current);
-                if literal_string.contains(&closing_token_string) {
-                    literal_string = literal_string.replace(&closing_token_string, "");
+        
+        if let Some(previous_token) = self.clone().tokens.last().clone()  {
+            let closing_token_string = SPECIAL_STRING_CLOSER.get(&previous_token.token_type).unwrap().clone();
+            // If it's a normal token
+            loop {
+                if let Some(current) = self.consume() {
+                    literal_string.push(current);
+                    if literal_string.contains(&closing_token_string) {
+                        literal_string = literal_string.replace(&closing_token_string, ""); 
+                        break;
+                    }
+                } else { // If there are no more characters left
                     break;
                 }
-            } else { // If there are no more characters left
-
-                break;
             }
+            
+            let literal_token = Token::new(TokenType::Literal, literal_string);
+            let expected_closing_token = SPECIAL_CLOSER.get(&previous_token.token_type).unwrap().clone();
+            self.tokens.push(literal_token);
+            self.tokens.push(Token::new(expected_closing_token, closing_token_string.clone())); // abcde * g *
+        } else {
+            // If we are consuming a iteral
+            loop {
+                if let Some(current) = self.consume().clone() {
+                    match current {
+                        '#' => {
+                            // if a token is found then push the literal and then consume the header
+                            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+                            self.tokens.push(literal_token);
+                            self.consume_header();
+                            break;
+                        },
+                        '*' =>  {
+                            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+                            self.tokens.push(literal_token);
+                            self.consume_italic_or_bold();
+                            break;
+                        }
+                        _ => literal_string.push(current),
+                    }
+                } else {
+                    break;
+                }
+            }
+            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+            self.tokens.push(literal_token);
         }
-        
-        let literal_token = Token::new(TokenType::Literal, literal_string);
-        let expected_closing_token = SPECIAL_CLOSER.get(&previous_token.token_type).unwrap().clone();
-        self.tokens.push(literal_token);
-        self.tokens.push(Token::new(expected_closing_token, closing_token_string));
     }
 
     // # hello <- valid
@@ -118,7 +151,25 @@ impl Scanner {
         self.tokens.push(match token_string.as_str() {
                 "# " => Token { token_type: TokenType::Header1, chars: token_string.chars().collect() },
                 "## " => Token { token_type: TokenType::Header2, chars: token_string.chars().collect() },
-                "###" => Token { token_type: TokenType::Header3, chars: token_string.chars().collect() },
+                "### " => Token { token_type: TokenType::Header3, chars: token_string.chars().collect() },
+                _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
+            });
+    }
+
+    fn consume_italic_or_bold(&mut self) {
+        let mut token_string = "".to_string();
+        for _ in 0..3 {
+            if self.peek(None).unwrap() == '*' {
+                token_string.push(self.consume().unwrap()); 
+                continue;
+            } 
+            break;
+        }
+        
+        self.tokens.push(match token_string.as_str() {
+                "*" => Token { token_type: TokenType::Italic, chars: token_string.chars().collect() },
+                "**" => Token { token_type: TokenType::Bold, chars: token_string.chars().collect() },
+                "***" => Token { token_type: TokenType::BoldItalic, chars: token_string.chars().collect() },
                 _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
             });
     }
@@ -134,11 +185,10 @@ pub fn parse(input: String) -> Scanner {
             Some(c) => c,
             None => break,
         };
-
-        println!("emoji: {current_char}");
         
         match current_char {
             '#' => scanner.consume_header(),
+            '*' => scanner.consume_italic_or_bold(),
             _ => scanner.consume_literal(),
         };
     }

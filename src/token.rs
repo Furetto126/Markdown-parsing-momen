@@ -12,6 +12,12 @@ pub enum TokenType {
     Header2Close,
     Header3,
     Header3Close,
+    Italic,
+    ItalicClose,
+    Bold,
+    BoldClose,
+    BoldItalic,
+    BoldItalicClose,
     Literal,
     Null
 }

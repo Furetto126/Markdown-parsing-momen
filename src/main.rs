@@ -2,7 +2,8 @@ mod scanner;
 mod token;
 
 fn main() {
-    let input = "# ciao".to_string();
+    //                               da problemi quando il previous token è un closer  
+    let input = "**emojiii** aaaa \n# eee".to_string();
 
     for t in scanner::parse(input).tokens {
         println!("{:?}", t);
