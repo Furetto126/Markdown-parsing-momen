@@ -1,7 +1,10 @@
 use crate::token::{Token, TokenType};
 
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::{
+    collections::{btree_map::Values, HashMap},
+    io::LineWriter,
+};
 
 lazy_static! {
     static ref SPECIAL_STRING_CLOSER: HashMap<TokenType, String> = {
@@ -16,7 +19,6 @@ lazy_static! {
         hash_map.insert(TokenType::Null, "".to_string());
         hash_map
     };
-
     static ref SPECIAL_CLOSER: HashMap<TokenType, TokenType> = {
         let mut hash_map = HashMap::new();
         hash_map.insert(TokenType::Header1, TokenType::Header1Close);
@@ -74,6 +76,10 @@ impl Scanner {
         self.offset += 1;
     }
 
+    fn revert(&mut self) {
+        self.offset -= 1;
+    }
+
     fn is_last(&self) -> bool {
         self.offset >= self.chars.len() - 1
     }
@@ -83,54 +89,85 @@ impl Scanner {
     }
 
     fn consume_literal(&mut self) {
-        let mut literal_string = "".to_string();
-        
-        if let Some(previous_token) = self.clone().tokens.last().clone()  {
-            let closing_token_string = SPECIAL_STRING_CLOSER.get(&previous_token.token_type).unwrap().clone();
+        if let Some(previous_token) = self.clone().tokens.last().clone() {
+            let mut literal_string = "".to_string();
+
+            if SPECIAL_CLOSER
+                .values()
+                .any(|value| value.eq(&previous_token.token_type))
+            {
+                self.consume_literal_no_close();
+                return;
+            }
+
+            let closing_token_string = SPECIAL_STRING_CLOSER
+                .get(&previous_token.token_type)
+                .unwrap()
+                .clone();
             // If it's a normal token
             loop {
                 if let Some(current) = self.consume() {
                     literal_string.push(current);
                     if literal_string.contains(&closing_token_string) {
-                        literal_string = literal_string.replace(&closing_token_string, ""); 
+                        literal_string = literal_string.replace(&closing_token_string, "");
                         break;
                     }
-                } else { // If there are no more characters left
-                    break;
-                }
-            }
-            
-            let literal_token = Token::new(TokenType::Literal, literal_string);
-            let expected_closing_token = SPECIAL_CLOSER.get(&previous_token.token_type).unwrap().clone();
-            self.tokens.push(literal_token);
-            self.tokens.push(Token::new(expected_closing_token, closing_token_string.clone())); // abcde * g *
-        } else {
-            // If we are consuming a iteral
-            loop {
-                if let Some(current) = self.consume().clone() {
-                    match current {
-                        '#' => {
-                            // if a token is found then push the literal and then consume the header
-                            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
-                            self.tokens.push(literal_token);
-                            self.consume_header();
-                            break;
-                        },
-                        '*' =>  {
-                            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
-                            self.tokens.push(literal_token);
-                            self.consume_italic_or_bold();
-                            break;
-                        }
-                        _ => literal_string.push(current),
-                    }
                 } else {
+                    // If there are no more characters left
                     break;
                 }
             }
-            let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+
+            let literal_token = Token::new(TokenType::Literal, literal_string);
+            let expected_closing_token = SPECIAL_CLOSER
+                .get(&previous_token.token_type)
+                .unwrap()
+                .clone();
             self.tokens.push(literal_token);
+            self.tokens.push(Token::new(
+                expected_closing_token,
+                closing_token_string.clone(),
+            )); // abcde * g *
+        } else {
+            self.consume_literal_no_close();
         }
+    }
+
+    /// Consumes the literal without expectinge a close token
+    fn consume_literal_no_close(&mut self) {
+        println!("consuming external literal");
+        let mut literal_string = "".to_string();
+
+        loop {
+            if let Some(current) = self.consume().clone() {
+                match current {
+                    '#' => {
+                        // if a token is found then push the literal and then consume the header
+                        let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+                        self.tokens.push(literal_token);
+
+                        self.revert();
+                        self.consume_header();
+                        return;
+                    }
+                    '*' => {
+                        let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+                        self.tokens.push(literal_token);
+
+                        self.revert();
+                        self.consume_italic_or_bold();
+                        return;
+                    }
+                    _ => literal_string.push(current),
+                }
+            } else {
+                break;
+            }
+        }
+        let literal_token = Token::new(TokenType::Literal, literal_string.clone());
+        self.tokens.push(literal_token);
+
+        println!("Literal consumed: {}", literal_string);
     }
 
     // # hello <- valid
@@ -139,53 +176,77 @@ impl Scanner {
         let mut token_string = "".to_string();
         for _ in 0..3 {
             if self.peek(None).unwrap() == '#' {
-                token_string.push(self.consume().unwrap()); 
+                token_string.push(self.consume().unwrap());
                 continue;
-            } 
+            }
             break;
         }
         if self.peek(None).unwrap() == ' ' {
             token_string.push(self.consume().unwrap());
         }
-        
+
         self.tokens.push(match token_string.as_str() {
-                "# " => Token { token_type: TokenType::Header1, chars: token_string.chars().collect() },
-                "## " => Token { token_type: TokenType::Header2, chars: token_string.chars().collect() },
-                "### " => Token { token_type: TokenType::Header3, chars: token_string.chars().collect() },
-                _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
-            });
+            "# " => Token {
+                token_type: TokenType::Header1,
+                chars: token_string.chars().collect(),
+            },
+            "## " => Token {
+                token_type: TokenType::Header2,
+                chars: token_string.chars().collect(),
+            },
+            "### " => Token {
+                token_type: TokenType::Header3,
+                chars: token_string.chars().collect(),
+            },
+            _ => Token {
+                token_type: TokenType::Literal,
+                chars: token_string.chars().collect(),
+            },
+        });
     }
 
     fn consume_italic_or_bold(&mut self) {
         let mut token_string = "".to_string();
         for _ in 0..3 {
             if self.peek(None).unwrap() == '*' {
-                token_string.push(self.consume().unwrap()); 
+                token_string.push(self.consume().unwrap());
                 continue;
-            } 
+            }
             break;
         }
-        
+
         self.tokens.push(match token_string.as_str() {
-                "*" => Token { token_type: TokenType::Italic, chars: token_string.chars().collect() },
-                "**" => Token { token_type: TokenType::Bold, chars: token_string.chars().collect() },
-                "***" => Token { token_type: TokenType::BoldItalic, chars: token_string.chars().collect() },
-                _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
-            });
+            "*" => Token {
+                token_type: TokenType::Italic,
+                chars: token_string.chars().collect(),
+            },
+            "**" => Token {
+                token_type: TokenType::Bold,
+                chars: token_string.chars().collect(),
+            },
+            "***" => Token {
+                token_type: TokenType::BoldItalic,
+                chars: token_string.chars().collect(),
+            },
+            _ => Token {
+                token_type: TokenType::Literal,
+                chars: token_string.chars().collect(),
+            },
+        });
     }
 }
 
-/// Parse a string 
-/// Returns a `Scanner` (use .tokens to grab the tokens from the scanner) 
+/// Parse a string
+/// Returns a `Scanner` (use .tokens to grab the tokens from the scanner)
 pub fn parse(input: String) -> Scanner {
     let mut scanner = Scanner::new(input);
 
-    loop {      
+    loop {
         let current_char = match scanner.peek(None) {
             Some(c) => c,
             None => break,
         };
-        
+
         match current_char {
             '#' => scanner.consume_header(),
             '*' => scanner.consume_italic_or_bold(),
