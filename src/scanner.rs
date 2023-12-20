@@ -1,10 +1,7 @@
 use crate::token::{Token, TokenType};
 
 use lazy_static::lazy_static;
-use std::{
-    collections::{btree_map::Values, HashMap},
-    io::LineWriter,
-};
+use std::collections::HashMap;
 
 lazy_static! {
     static ref SPECIAL_STRING_CLOSER: HashMap<TokenType, String> = {
@@ -76,7 +73,7 @@ impl Scanner {
         self.offset += 1;
     }
 
-    fn revert(&mut self) {
+    fn back(&mut self) {
         self.offset -= 1;
     }
 
@@ -127,7 +124,7 @@ impl Scanner {
             self.tokens.push(Token::new(
                 expected_closing_token,
                 closing_token_string.clone(),
-            )); // abcde * g *
+            )); 
         } else {
             self.consume_literal_no_close();
         }
@@ -135,18 +132,16 @@ impl Scanner {
 
     /// Consumes the literal without expectinge a close token
     fn consume_literal_no_close(&mut self) {
-        println!("consuming external literal");
         let mut literal_string = "".to_string();
 
         loop {
-            if let Some(current) = self.consume().clone() {
+            if let Some(current) = self.peek(None).clone() {
                 match current {
                     '#' => {
                         // if a token is found then push the literal and then consume the header
                         let literal_token = Token::new(TokenType::Literal, literal_string.clone());
                         self.tokens.push(literal_token);
 
-                        self.revert();
                         self.consume_header();
                         return;
                     }
@@ -154,11 +149,13 @@ impl Scanner {
                         let literal_token = Token::new(TokenType::Literal, literal_string.clone());
                         self.tokens.push(literal_token);
 
-                        self.revert();
                         self.consume_italic_or_bold();
                         return;
                     }
-                    _ => literal_string.push(current),
+                    _ => {
+                        literal_string.push(current);
+                        self.advance();     
+                    },
                 }
             } else {
                 break;
