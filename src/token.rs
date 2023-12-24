@@ -4,7 +4,7 @@ pub struct Token {
     pub chars: Vec<char>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Header1,
     Header1Close,
@@ -19,7 +19,7 @@ pub enum TokenType {
     BoldItalic,
     BoldItalicClose,
     Literal,
-    Null
+    Null,
 }
 
 impl Default for TokenType {
@@ -30,21 +30,22 @@ impl Default for TokenType {
 
 impl Default for Token {
     fn default() -> Self {
-        Token { token_type: TokenType::default(), chars: vec![] }
+        Token {
+            token_type: TokenType::default(),
+            chars: vec![],
+        }
     }
 }
 
-impl Token{
-    pub fn from(token_string: String) -> Token {
-        match token_string.as_str() {
-            "# " => Token { token_type: TokenType::Header1, chars: token_string.chars().collect() },
-            "## " => Token { token_type: TokenType::Header2, chars: token_string.chars().collect() },
-            "###" => Token { token_type: TokenType::Header3, chars: token_string.chars().collect() },
-            _ => Token { token_type: TokenType::Literal, chars:  token_string.chars().collect() },
+impl Token {
+    pub fn new(token_type: TokenType, value: String) -> Token {
+        Token {
+            token_type,
+            chars: value.chars().collect(),
         }
     }
 
-    pub fn new(token_type: TokenType, value: String) -> Token {
-        Token { token_type, chars: value.chars().collect() }
-    }    
+    pub fn get_chars_as_string(&self) -> String {
+        self.chars.clone().into_iter().collect()
+    }
 }

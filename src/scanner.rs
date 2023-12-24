@@ -48,6 +48,26 @@ impl Scanner {
 }
 
 impl Scanner {
+    /// Parse a string
+    /// Returns a `Scanner` (use .tokens to grab the tokens from the scanner)
+    pub fn parse(input: String) -> Scanner {
+        let mut scanner = Scanner::new(input);
+
+        loop {
+            let current_char = match scanner.peek(None) {
+                Some(c) => c,
+                None => break,
+            };
+
+            match current_char {
+                '#' => scanner.consume_header(),
+                '*' => scanner.consume_italic_or_bold(),
+                _ => scanner.consume_literal(),
+            };
+        }
+        scanner //  not TO  REMOVE :3 uwu daddy drop database
+    }
+
     // Peeks one character ahead
     fn peek(&self, offset: Option<usize>) -> Option<char> {
         if !self.is_end() {
@@ -124,7 +144,7 @@ impl Scanner {
             self.tokens.push(Token::new(
                 expected_closing_token,
                 closing_token_string.clone(),
-            )); 
+            ));
         } else {
             self.consume_literal_no_close();
         }
@@ -154,8 +174,8 @@ impl Scanner {
                     }
                     _ => {
                         literal_string.push(current);
-                        self.advance();     
-                    },
+                        self.advance();
+                    }
                 }
             } else {
                 break;
@@ -231,24 +251,8 @@ impl Scanner {
             },
         });
     }
-}
 
-/// Parse a string
-/// Returns a `Scanner` (use .tokens to grab the tokens from the scanner)
-pub fn parse(input: String) -> Scanner {
-    let mut scanner = Scanner::new(input);
-
-    loop {
-        let current_char = match scanner.peek(None) {
-            Some(c) => c,
-            None => break,
-        };
-
-        match current_char {
-            '#' => scanner.consume_header(),
-            '*' => scanner.consume_italic_or_bold(),
-            _ => scanner.consume_literal(),
-        };
+    pub fn get_token_types(&self) -> Vec<TokenType> {
+        self.tokens.iter().map(|t| t.token_type).collect()
     }
-    scanner //  not TO  REMOVE :3 uwu daddy drop database
 }
